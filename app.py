@@ -9,6 +9,9 @@ from io import BytesIO
 import numpy as np
 from google.cloud import vision
 import io
+import re
+from streamlit_cropper import st_cropper
+import cv2
 
 # Configure page
 st.set_page_config(
@@ -50,6 +53,22 @@ def is_image_file(filename):
     """Check if file is a supported image format"""
     supported_formats = ['.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif', '.webp']
     return any(filename.lower().endswith(fmt) for fmt in supported_formats)
+
+def extract_numbers_from_text(text):
+    """Extract numbers with more than 5 digits from text"""
+    if not text or text in ["[No text detected]", "[Error processing image: {str(e)}]"]:
+        return "[No numbers found]"
+    
+    # Find all sequences of digits
+    numbers = re.findall(r'\d+', text)
+    
+    # Filter numbers with more than 5 digits
+    long_numbers = [num for num in numbers if len(num) > 5]
+    
+    if long_numbers:
+        return ' '.join(long_numbers)
+    else:
+        return "[No numbers with 5+ digits found]"
 
 def extract_text_with_google_vision_api(image_path):
     """Extract text using Google Cloud Vision API (most accurate method)"""
@@ -114,17 +133,55 @@ def extract_text_with_google_vision_api(image_path):
         st.error(f"Error with Google Vision API: {str(e)}")
         return None
 
-def extract_text_from_image(image_path):
+def crop_image(image, crop_box):
+    """Crop image using the provided crop box coordinates"""
+    try:
+        # crop_box format: (left, top, right, bottom)
+        left, top, right, bottom = crop_box
+        cropped = image.crop((left, top, right, bottom))
+        return cropped
+    except Exception as e:
+        st.error(f"Error cropping image: {str(e)}")
+        return image
+
+def extract_text_from_image(image_path, crop_box=None, numbers_only=False):
     """Extract text from a single image using the most accurate method available"""
     try:
+        # Open and optionally crop the image
+        image = Image.open(image_path)
+        
+        if crop_box:
+            image = crop_image(image, crop_box)
+            # Save cropped image temporarily
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_file:
+                image.save(tmp_file.name)
+                cropped_image_path = tmp_file.name
+        else:
+            cropped_image_path = image_path
+        
         # First try Google Cloud Vision API (most accurate)
-        google_result = extract_text_with_google_vision_api(image_path)
+        google_result = extract_text_with_google_vision_api(cropped_image_path)
         
+        text_result = None
         if google_result and google_result != "[No text detected]":
-            return f"[Google Vision] {google_result}"
+            text_result = google_result
+        else:
+            # Fallback to enhanced Tesseract if Google Vision fails or API key not available
+            text_result = extract_text_with_tesseract_fallback(cropped_image_path)
         
-        # Fallback to enhanced Tesseract if Google Vision fails or API key not available
-        return extract_text_with_tesseract_fallback(image_path)
+        # Clean up temporary cropped image file
+        if crop_box and cropped_image_path != image_path:
+            try:
+                os.unlink(cropped_image_path)
+            except:
+                pass
+        
+        # Extract numbers only if requested
+        if numbers_only and text_result:
+            numbers = extract_numbers_from_text(text_result)
+            return numbers
+        
+        return text_result
     
     except Exception as e:
         return f"[Error processing image: {str(e)}]"
@@ -170,7 +227,7 @@ def extract_text_with_tesseract_fallback(image_path):
     except Exception as e:
         return f"[Error with fallback OCR: {str(e)}]"
 
-def process_images(uploaded_files):
+def process_images(uploaded_files, crop_box=None, numbers_only=False):
     """Process all uploaded image files and extract text using enhanced OCR"""
     results = []
     progress_bar = st.progress(0)
@@ -196,8 +253,8 @@ def process_images(uploaded_files):
                 tmp_file.write(uploaded_file.getvalue())
                 tmp_file_path = tmp_file.name
             
-            # Extract text from image using enhanced OCR
-            extracted_text = extract_text_from_image(tmp_file_path)
+            # Extract text from image using enhanced OCR with cropping and number extraction
+            extracted_text = extract_text_from_image(tmp_file_path, crop_box, numbers_only)
             
             # Clean up temporary file
             os.unlink(tmp_file_path)
@@ -307,6 +364,50 @@ def main():
             
             if uploaded_files:
                 st.success(f"Found {len(uploaded_files)} image files in the ZIP folder")
+                
+                # Show cropping interface for ZIP files
+                st.subheader("📐 Crop Area Selection")
+                st.info("Define the crop area using the first image. This same area will be applied to all images in the ZIP.")
+                
+                # Display first image for cropping
+                first_file = uploaded_files[0]
+                
+                # Create temporary file for the first image
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_file:
+                    tmp_file.write(first_file.getvalue())
+                    first_image_path = tmp_file.name
+                
+                # Load and display first image
+                first_image = Image.open(first_image_path)
+                
+                # Cropping interface
+                cropped_img = st_cropper(
+                    first_image, 
+                    realtime_update=True, 
+                    box_color='#FF0004',
+                    aspect_ratio=None,
+                    return_type='box'
+                )
+                
+                # Store crop coordinates in session state
+                if cropped_img:
+                    st.session_state['crop_box'] = cropped_img
+                    st.success("Crop area defined! This will be applied to all images.")
+                
+                # Clean up temporary file
+                os.unlink(first_image_path)
+                
+                # Add option for number extraction
+                st.subheader("🔢 Extraction Options")
+                numbers_only = st.checkbox(
+                    "Extract only numbers with 5+ digits",
+                    value=True,
+                    help="When enabled, only numbers with more than 5 digits will be extracted from the cropped areas"
+                )
+                
+                # Store options in session state
+                st.session_state['numbers_only'] = numbers_only
+                
             else:
                 st.warning("No image files found in the ZIP folder")
     
@@ -321,12 +422,28 @@ def main():
         st.markdown("---")
         
         # Process button
-        if st.button("🚀 Extract Text from All Images", type="primary"):
-            st.subheader("🔄 Processing Images with Advanced OCR")
-            
-            # Process all files
-            with st.spinner("Extracting text and handwriting from images..."):
-                results, processed_count = process_images(uploaded_files)
+        process_button_text = "🚀 Extract Numbers from Cropped Areas" if upload_option == "Upload ZIP Folder" else "🚀 Extract Text from All Images"
+        
+        if st.button(process_button_text, type="primary"):
+            if upload_option == "Upload ZIP Folder":
+                st.subheader("🔄 Processing Images with Cropping and Number Extraction")
+                
+                # Get crop box and options from session state
+                crop_box = st.session_state.get('crop_box', None)
+                numbers_only = st.session_state.get('numbers_only', True)
+                
+                if not crop_box:
+                    st.error("Please define a crop area first by adjusting the crop box above.")
+                else:
+                    # Process all files with cropping and number extraction
+                    with st.spinner("Applying crop area and extracting numbers from all images..."):
+                        results, processed_count = process_images(uploaded_files, crop_box, numbers_only)
+            else:
+                st.subheader("🔄 Processing Images with Advanced OCR")
+                
+                # Process all files normally
+                with st.spinner("Extracting text from images..."):
+                    results, processed_count = process_images(uploaded_files)
             
             if results:
                 st.success(f"✅ Processing completed! Extracted text from {processed_count} images.")
@@ -382,16 +499,25 @@ def main():
         st.markdown("""
         **🎯 Google Vision API**: Professional-grade OCR with industry-leading accuracy for all text types
         **✍️ Superior Handwriting Recognition**: Advanced AI models trained on millions of handwriting samples
-        **📁 Folder Processing**: Upload ZIP files to process entire image folders at once
+        **📐 Smart Cropping**: Define crop area on first image, automatically apply to all images in ZIP
+        **🔢 Number Extraction**: Extract only numbers with 5+ digits from cropped areas
+        **📁 Batch Processing**: Process entire ZIP folders with consistent cropping
         **🔄 Smart Fallback**: Automatic fallback to enhanced Tesseract if Google API is unavailable
         """)
         
         st.subheader("📋 Instructions")
         st.markdown("""
-        1. **Choose Method**: Select individual images or upload a ZIP folder
-        2. **Upload Files**: Select your images or ZIP file containing image folder
-        3. **Process**: Click "Extract Text" to start advanced OCR processing
-        4. **Download**: Get your results in a formatted TXT file
+        **Individual Images:**
+        1. Select "Upload Individual Images"
+        2. Choose your image files
+        3. Click "Extract Text" for full text extraction
+        
+        **ZIP Folder with Cropping:**
+        1. Select "Upload ZIP Folder"
+        2. Upload a ZIP file containing your images
+        3. Use the crop tool on the first image to define the area of interest
+        4. Choose to extract numbers with 5+ digits
+        5. Click "Extract Numbers" to process all images with the same crop area
         
         **Supported Formats**: PNG, JPG, JPEG, BMP, TIFF, WebP
         **Output Format**: `imagename1 extracted text     imagename2 extracted text`

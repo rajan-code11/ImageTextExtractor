@@ -70,7 +70,15 @@ The deployment uses Replit's workflow system with parallel task execution, ensur
 
 Preferred communication style: Simple, everyday language.
 
+## Recent Changes
+
+- June 24, 2025: Added smart cropping functionality for ZIP folders
+- June 24, 2025: Implemented number extraction (5+ digits only) 
+- June 24, 2025: Integrated Google Cloud Vision API for professional OCR accuracy
+- June 24, 2025: Added streamlit-cropper for interactive crop area selection
+- June 24, 2025: Enhanced workflow to apply same crop area to all images in ZIP
+
 ## Changelog
 
-Changelog:
-- June 24, 2025. Initial setup
+- June 24, 2025. Initial setup with basic OCR
+- June 24, 2025. Upgraded to professional OCR with cropping and number extraction
