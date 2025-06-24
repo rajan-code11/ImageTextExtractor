@@ -136,8 +136,31 @@ def extract_text_with_google_vision_api(image_path):
 def crop_image(image, crop_box):
     """Crop image using the provided crop box coordinates"""
     try:
-        # crop_box format: (left, top, right, bottom)
-        left, top, right, bottom = crop_box
+        # Extract coordinates from streamlit-cropper format
+        if isinstance(crop_box, dict) and 'coords' in crop_box:
+            coords = crop_box['coords']
+            left = coords['left']
+            top = coords['top']
+            width = coords['width']
+            height = coords['height']
+            right = left + width
+            bottom = top + height
+        else:
+            # Fallback for tuple format (left, top, right, bottom)
+            left, top, right, bottom = crop_box
+        
+        # Ensure coordinates are valid
+        left = max(0, int(left))
+        top = max(0, int(top))
+        right = min(image.width, int(right))
+        bottom = min(image.height, int(bottom))
+        
+        # Ensure right > left and bottom > top
+        if right <= left:
+            right = left + 50  # Minimum width
+        if bottom <= top:
+            bottom = top + 50  # Minimum height
+        
         cropped = image.crop((left, top, right, bottom))
         return cropped
     except Exception as e:
@@ -380,14 +403,43 @@ def main():
                 # Load and display first image
                 first_image = Image.open(first_image_path)
                 
-                # Cropping interface
+                # Resize image for better display if it's too large
+                max_display_width = 800
+                if first_image.width > max_display_width:
+                    ratio = max_display_width / first_image.width
+                    new_height = int(first_image.height * ratio)
+                    display_image = first_image.resize((max_display_width, new_height), Image.Resampling.LANCZOS)
+                else:
+                    display_image = first_image
+                
+                st.info("📐 Drag to select the area you want to extract text from. This area will be applied to all images.")
+                
+                # Cropping interface with larger display
                 cropped_img = st_cropper(
-                    first_image, 
+                    display_image, 
                     realtime_update=True, 
                     box_color='#FF0004',
                     aspect_ratio=None,
-                    return_type='box'
+                    return_type='dict'
                 )
+                
+                # Scale crop coordinates back to original image size if image was resized
+                if first_image.width > max_display_width:
+                    scale_factor = first_image.width / display_image.width
+                    if cropped_img and 'coords' in cropped_img:
+                        coords = cropped_img['coords']
+                        scaled_coords = {
+                            'left': coords['left'] * scale_factor,
+                            'top': coords['top'] * scale_factor,
+                            'width': coords['width'] * scale_factor,
+                            'height': coords['height'] * scale_factor
+                        }
+                        cropped_img = {'coords': scaled_coords}
+                
+                # Display crop area info
+                if cropped_img and 'coords' in cropped_img:
+                    coords = cropped_img['coords']
+                    st.success(f"Crop area: {int(coords['left'])}, {int(coords['top'])}, {int(coords['width'])}x{int(coords['height'])}")
                 
                 # Store crop coordinates in session state
                 if cropped_img:
