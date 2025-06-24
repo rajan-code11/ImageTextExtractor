@@ -72,11 +72,11 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
-- June 24, 2025: Added smart cropping functionality for ZIP folders
-- June 24, 2025: Implemented number extraction (5+ digits only) 
-- June 24, 2025: Integrated Google Cloud Vision API for professional OCR accuracy
-- June 24, 2025: Added streamlit-cropper for interactive crop area selection
-- June 24, 2025: Enhanced workflow to apply same crop area to all images in ZIP
+- June 24, 2025: Created complete Flutter Android application with offline OCR capabilities
+- June 24, 2025: Implemented GitHub Actions workflow for automatic APK building
+- June 24, 2025: Added comprehensive documentation and deployment guides
+- June 24, 2025: Used Google ML Kit for offline text recognition (no internet required)
+- June 24, 2025: Configured batch ZIP processing with number extraction (5+ digits only)
 
 ## Changelog
 

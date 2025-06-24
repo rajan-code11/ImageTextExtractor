@@ -1,0 +1,74 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'ocr_number_extractor/**'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+        
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.22.0'
+        channel: 'stable'
+        
+    - name: Get Flutter dependencies
+      working-directory: ./ocr_number_extractor
+      run: flutter pub get
+      
+    - name: Analyze Flutter code
+      working-directory: ./ocr_number_extractor
+      run: flutter analyze
+      
+    - name: Build APK
+      working-directory: ./ocr_number_extractor
+      run: flutter build apk --release
+      
+    - name: Upload APK as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ocr-number-extractor-apk
+        path: ocr_number_extractor/build/app/outputs/flutter-apk/app-release.apk
+        retention-days: 30
+        
+    - name: Create Release
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ github.run_number }}
+        name: OCR Number Extractor v${{ github.run_number }}
+        body: |
+          Automated release of OCR Number Extractor Android App
+          
+          ## Features
+          - Offline OCR using Google ML Kit
+          - Extract numbers (5+ digits) from images in ZIP folders
+          - Batch processing with progress tracking
+          - Results export in specified format
+          
+          ## Installation
+          1. Download the APK file below
+          2. Enable "Install from unknown sources" in Android settings
+          3. Install the APK on your Android device
+          4. Grant storage permissions when prompted
+          
+        files: ocr_number_extractor/build/app/outputs/flutter-apk/app-release.apk
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
