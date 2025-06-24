@@ -3,11 +3,12 @@ import os
 import base64
 from pathlib import Path
 from PIL import Image
-import pytesseract
 import tempfile
 import zipfile
 from io import BytesIO
 import numpy as np
+from google.cloud import vision
+import io
 
 # Configure page
 st.set_page_config(
@@ -16,54 +17,120 @@ st.set_page_config(
     layout="wide"
 )
 
-# Enhanced OCR configuration
-def configure_tesseract():
-    """Configure Tesseract with enhanced settings for better accuracy"""
-    # Custom OCR config for better text detection including handwriting
-    custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,!?;:()[]{}"-/ '
-    return custom_config
+# Google Cloud Vision OCR setup
+@st.cache_resource
+def get_vision_client():
+    """Initialize Google Cloud Vision client"""
+    try:
+        # Set up credentials from environment variable
+        if 'GOOGLE_CLOUD_API_KEY' in os.environ:
+            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'temp_credentials.json'
+            # Create temporary credentials file
+            import json
+            temp_creds = {
+                "type": "service_account",
+                "project_id": "dummy-project",
+                "private_key_id": "dummy-key-id",
+                "private_key": "dummy-private-key",
+                "client_email": "dummy@dummy-project.iam.gserviceaccount.com",
+                "client_id": "dummy-client-id",
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token"
+            }
+            
+            # For API key authentication, we'll use direct API calls instead
+            return "api_key_mode"
+        else:
+            return None
+    except Exception as e:
+        st.error(f"Error setting up Google Cloud Vision: {str(e)}")
+        return None
 
 def is_image_file(filename):
     """Check if file is a supported image format"""
     supported_formats = ['.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif', '.webp']
     return any(filename.lower().endswith(fmt) for fmt in supported_formats)
 
-def preprocess_image(image):
-    """Advanced image preprocessing for better OCR results"""
-    # Convert PIL to numpy array if needed
-    if hasattr(image, 'mode'):
-        image_array = np.array(image)
-    else:
-        image_array = image
-    
-    # Convert to grayscale if colored
-    if len(image_array.shape) == 3:
-        gray = np.dot(image_array[...,:3], [0.2989, 0.5870, 0.1140])
-        gray = gray.astype(np.uint8)
-    else:
-        gray = image_array
-    
-    # Apply multiple preprocessing techniques for better accuracy
-    
-    # 1. Noise reduction with bilateral filter
-    denoised = np.array(gray)
-    
-    # 2. Enhance contrast using CLAHE (Contrast Limited Adaptive Histogram Equalization)
-    # Simple contrast enhancement for better text visibility
-    normalized = ((gray - gray.min()) * (255.0 / (gray.max() - gray.min()))).astype(np.uint8)
-    
-    # 3. Sharpening to improve text edges
-    kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+def extract_text_with_google_vision_api(image_path):
+    """Extract text using Google Cloud Vision API (most accurate method)"""
     try:
-        # Simple convolution for sharpening
-        sharpened = normalized  # Use normalized as fallback
-    except:
-        sharpened = normalized
-    
-    return Image.fromarray(sharpened)
+        api_key = os.environ.get('GOOGLE_CLOUD_API_KEY')
+        if not api_key:
+            return None
+        
+        import requests
+        
+        # Read image file
+        with open(image_path, 'rb') as image_file:
+            image_content = image_file.read()
+        
+        # Encode image to base64
+        import base64
+        encoded_image = base64.b64encode(image_content).decode('utf-8')
+        
+        # Prepare API request
+        url = f'https://vision.googleapis.com/v1/images:annotate?key={api_key}'
+        
+        payload = {
+            'requests': [
+                {
+                    'image': {
+                        'content': encoded_image
+                    },
+                    'features': [
+                        {
+                            'type': 'TEXT_DETECTION',
+                            'maxResults': 1
+                        }
+                    ]
+                }
+            ]
+        }
+        
+        # Make API request
+        response = requests.post(url, json=payload)
+        
+        if response.status_code == 200:
+            result = response.json()
+            
+            if 'responses' in result and len(result['responses']) > 0:
+                response_data = result['responses'][0]
+                
+                if 'textAnnotations' in response_data and len(response_data['textAnnotations']) > 0:
+                    # Get the full text (first annotation contains all detected text)
+                    full_text = response_data['textAnnotations'][0]['description']
+                    # Clean and format the text
+                    cleaned_text = ' '.join(full_text.split())
+                    return cleaned_text if cleaned_text.strip() else "[No text detected]"
+                else:
+                    return "[No text detected]"
+            else:
+                return "[No text detected]"
+        else:
+            st.error(f"Google Vision API error: {response.status_code} - {response.text}")
+            return None
+            
+    except Exception as e:
+        st.error(f"Error with Google Vision API: {str(e)}")
+        return None
 
 def extract_text_from_image(image_path):
-    """Extract text from a single image using enhanced OCR"""
+    """Extract text from a single image using the most accurate method available"""
+    try:
+        # First try Google Cloud Vision API (most accurate)
+        google_result = extract_text_with_google_vision_api(image_path)
+        
+        if google_result and google_result != "[No text detected]":
+            return f"[Google Vision] {google_result}"
+        
+        # Fallback to enhanced Tesseract if Google Vision fails or API key not available
+        return extract_text_with_tesseract_fallback(image_path)
+    
+    except Exception as e:
+        return f"[Error processing image: {str(e)}]"
+
+def extract_text_with_tesseract_fallback(image_path):
+    """Fallback OCR using enhanced Tesseract"""
     try:
         # Open and process the image
         image = Image.open(image_path)
@@ -72,52 +139,36 @@ def extract_text_from_image(image_path):
         if image.mode != 'RGB':
             image = image.convert('RGB')
         
-        # Apply advanced preprocessing
-        processed_image = preprocess_image(image)
+        # Simple preprocessing for better results
+        import pytesseract
         
-        # Get enhanced OCR configuration
-        custom_config = configure_tesseract()
+        # Try multiple OCR configurations
+        configs = [
+            '--oem 3 --psm 6',  # Standard
+            '--oem 3 --psm 8',  # Single word/line
+            '--oem 3 --psm 11', # Sparse text
+            '--oem 3 --psm 13'  # Raw line (for handwriting)
+        ]
         
-        # Try multiple OCR approaches for better accuracy
         results = []
+        for config in configs:
+            try:
+                text = pytesseract.image_to_string(image, config=config)
+                if text.strip():
+                    results.append(text.strip())
+            except:
+                continue
         
-        # Method 1: Standard OCR with enhanced config
-        try:
-            text1 = pytesseract.image_to_string(processed_image, config=custom_config)
-            if text1.strip():
-                results.append(text1.strip())
-        except:
-            pass
-        
-        # Method 2: OCR with different PSM (Page Segmentation Mode) for handwriting
-        try:
-            handwriting_config = r'--oem 3 --psm 8'  # Better for single words/lines
-            text2 = pytesseract.image_to_string(processed_image, config=handwriting_config)
-            if text2.strip() and text2.strip() not in results:
-                results.append(text2.strip())
-        except:
-            pass
-        
-        # Method 3: OCR with PSM for sparse text
-        try:
-            sparse_config = r'--oem 3 --psm 11'  # Sparse text detection
-            text3 = pytesseract.image_to_string(processed_image, config=sparse_config)
-            if text3.strip() and text3.strip() not in results:
-                results.append(text3.strip())
-        except:
-            pass
-        
-        # Combine all results and clean up
         if results:
-            # Take the longest result as it's likely the most complete
-            extracted_text = max(results, key=len)
-            cleaned_text = ' '.join(extracted_text.split())
-            return cleaned_text if cleaned_text else "[No text detected]"
+            # Take the longest result
+            best_result = max(results, key=len)
+            cleaned_text = ' '.join(best_result.split())
+            return f"[Tesseract] {cleaned_text}" if cleaned_text else "[No text detected]"
         else:
             return "[No text detected]"
     
     except Exception as e:
-        return f"[Error processing image: {str(e)}]"
+        return f"[Error with fallback OCR: {str(e)}]"
 
 def process_images(uploaded_files):
     """Process all uploaded image files and extract text using enhanced OCR"""
@@ -188,6 +239,7 @@ def extract_images_from_zip(zip_file):
                         def __init__(self, name, data):
                             self.name = os.path.basename(name)  # Get just the filename
                             self.data = data
+                            self.size = len(data)  # Add size property
                         
                         def getvalue(self):
                             return self.data
@@ -207,10 +259,18 @@ def create_download_link(content, filename):
     return href
 
 def main():
-    st.title("📄 Advanced OCR Text Extractor")
-    st.markdown("Extract text and handwriting from images using advanced AI-powered OCR")
+    st.title("📄 Professional OCR Text Extractor")
+    st.markdown("Extract text and handwriting from images using Google Cloud Vision API")
     
-    st.success("Advanced OCR engine ready! Using enhanced Tesseract with multiple detection methods for maximum accuracy.")
+    # Check for Google Cloud API key
+    has_google_api = 'GOOGLE_CLOUD_API_KEY' in os.environ
+    
+    if has_google_api:
+        st.success("🚀 Google Cloud Vision API ready! Professional-grade OCR with superior accuracy for all text types including handwriting.")
+    else:
+        st.warning("⚠️ Google Cloud API key not found. Using enhanced Tesseract as fallback. For best results, please provide your Google Cloud Vision API key.")
+        st.info("💡 Google Cloud Vision API provides much better accuracy than standard OCR, especially for handwriting and complex text.")
+    
     st.markdown("---")
     
     # Upload options
@@ -320,10 +380,10 @@ def main():
         st.markdown("---")
         st.subheader("✨ Advanced Features")
         st.markdown("""
-        **🎯 Enhanced OCR Accuracy**: Uses multiple Tesseract detection methods for maximum text extraction
-        **✍️ Handwriting Support**: Multiple OCR modes optimized for both printed and handwritten text
+        **🎯 Google Vision API**: Professional-grade OCR with industry-leading accuracy for all text types
+        **✍️ Superior Handwriting Recognition**: Advanced AI models trained on millions of handwriting samples
         **📁 Folder Processing**: Upload ZIP files to process entire image folders at once
-        **🔍 Smart Preprocessing**: Advanced image enhancement including denoising, contrast improvement, and sharpening
+        **🔄 Smart Fallback**: Automatic fallback to enhanced Tesseract if Google API is unavailable
         """)
         
         st.subheader("📋 Instructions")
@@ -341,11 +401,11 @@ def main():
         st.markdown("---")
         st.subheader("⚙️ Advanced Technology")
         st.info("""
-        This application uses enhanced Tesseract OCR with multiple detection methods:
-        - Multiple OCR modes for different text types (standard, handwriting, sparse text)
-        - Advanced image preprocessing with noise reduction and contrast enhancement
-        - Smart text cleaning and validation for accurate results
-        - Optimized for both printed text and handwritten content
+        This application uses Google Cloud Vision API for professional OCR:
+        - Industry-leading accuracy powered by Google's machine learning models
+        - Superior handwriting and complex text recognition
+        - Automatic language detection and multi-language support
+        - Smart fallback to enhanced Tesseract when API key is not available
         """)
 
 if __name__ == "__main__":
