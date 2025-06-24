@@ -69,6 +69,7 @@ The deployment uses Replit's workflow system with parallel task execution, ensur
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
+User is a beginner with app development - needs step-by-step guidance.
 
 ## Recent Changes
 
