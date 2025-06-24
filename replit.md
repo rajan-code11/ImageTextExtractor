@@ -70,6 +70,7 @@ The deployment uses Replit's workflow system with parallel task execution, ensur
 
 Preferred communication style: Simple, everyday language.
 User is a beginner with app development - needs step-by-step guidance.
+User is using Replit on mobile Android app - needs mobile-specific instructions.
 
 ## Recent Changes
 
