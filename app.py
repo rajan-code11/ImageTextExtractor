@@ -415,31 +415,41 @@ def main():
                 st.info("📐 Drag to select the area you want to extract text from. This area will be applied to all images.")
                 
                 # Cropping interface with larger display
-                cropped_img = st_cropper(
+                crop_result = st_cropper(
                     display_image, 
                     realtime_update=True, 
                     box_color='#FF0004',
                     aspect_ratio=None,
-                    return_type='dict'
+                    return_type='both'
                 )
                 
-                # Scale crop coordinates back to original image size if image was resized
-                if first_image.width > max_display_width:
-                    scale_factor = first_image.width / display_image.width
-                    if cropped_img and 'coords' in cropped_img:
-                        coords = cropped_img['coords']
-                        scaled_coords = {
-                            'left': coords['left'] * scale_factor,
-                            'top': coords['top'] * scale_factor,
-                            'width': coords['width'] * scale_factor,
-                            'height': coords['height'] * scale_factor
+                # Extract crop box coordinates
+                if crop_result:
+                    cropped_image, crop_box = crop_result
+                    left, top, width, height = crop_box['left'], crop_box['top'], crop_box['width'], crop_box['height']
+                    
+                    # Scale crop coordinates back to original image size if image was resized
+                    if first_image.width > max_display_width:
+                        scale_factor = first_image.width / display_image.width
+                        left *= scale_factor
+                        top *= scale_factor
+                        width *= scale_factor
+                        height *= scale_factor
+                    
+                    # Create crop box in the format expected by crop_image function
+                    cropped_img = {
+                        'coords': {
+                            'left': left,
+                            'top': top,
+                            'width': width,
+                            'height': height
                         }
-                        cropped_img = {'coords': scaled_coords}
-                
-                # Display crop area info
-                if cropped_img and 'coords' in cropped_img:
-                    coords = cropped_img['coords']
-                    st.success(f"Crop area: {int(coords['left'])}, {int(coords['top'])}, {int(coords['width'])}x{int(coords['height'])}")
+                    }
+                    
+                    # Display crop area info
+                    st.success(f"Crop area: {int(left)}, {int(top)}, {int(width)}x{int(height)}")
+                else:
+                    cropped_img = None
                 
                 # Store crop coordinates in session state
                 if cropped_img:
