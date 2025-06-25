@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:archive/archive.dart';
 import 'package:path_provider/path_provider.dart';
@@ -79,7 +81,7 @@ class _OCRHomePageState extends State<OCRHomePage> {
     }
   }
 
-  // New: Folder selection
+  // Folder selection
   Future<void> _pickImageFolder() async {
     await _requestPermissions();
 
@@ -92,9 +94,7 @@ class _OCRHomePageState extends State<OCRHomePage> {
     });
 
     try {
-      await _extractImagesFromFolder(selectedDirectory);
-      await _processImages();
-    } catch (e) {
+ (e) {
       _showError('Error: $e');
     }
 
@@ -162,7 +162,7 @@ class _OCRHomePageState extends State<OCRHomePage> {
   Future<void> _processImages() async {
     if (_imageFiles.isEmpty) return;
 
-    List<String> results = [];
+    List<String results = [];
 
     for (int i = 0; i < _imageFiles.length; i++) {
       setState(() {
@@ -187,7 +187,8 @@ class _OCRHomePageState extends State<OCRHomePage> {
   }
 
   Future<String> _extractNumbers(File imageFile) async {
-    final inputImage = InputImage.fromFile(imageFile.processImage);
+    final inputImage = InputImage.fromFile(imageFile);
+    final recognizedText = await _textRecognizer.processImage(inputImage);
 
     final RegExp numberRegex = RegExp(r'\d+');
     final matches = numberRegex.allMatches(recognizedText.text);
