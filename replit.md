@@ -1,70 +1,76 @@
-# OCR Text Extractor
+# OCR Number Extractor
 
 ## Overview
 
-This is a Streamlit-based OCR (Optical Character Recognition) application that extracts text from uploaded image files. The application uses Python with Tesseract OCR engine to process various image formats and convert them to readable text. It's designed to handle single images or batch processing of multiple image files.
+Flutter Android application that extracts numbers (5+ digits) from images in ZIP folders using offline OCR. Built with Google ML Kit for text recognition without requiring internet connectivity. Designed for batch processing with smart cropping functionality.
 
 ## System Architecture
 
-The application follows a simple single-tier architecture:
+**Mobile App Framework**: Flutter provides cross-platform development with native Android performance and UI components.
 
-**Frontend & Backend**: Streamlit framework serves as both the web interface and application logic layer, providing an integrated solution for file upload, image processing, and result display.
+**Offline OCR Engine**: Google ML Kit Text Recognition processes images locally without internet dependency.
 
-**OCR Processing**: Pytesseract library interfaces with the Tesseract OCR engine to extract text from images.
-
-**Image Processing**: PIL (Python Imaging Library) handles image format conversion and preprocessing before OCR analysis.
+**File Processing**: Archive library handles ZIP folder extraction and image file management with proper Android permissions.
 
 ## Key Components
 
-### Core Application (`app.py`)
-- **File Upload Handler**: Manages multiple image file uploads with format validation
-- **OCR Engine**: Processes images using Tesseract with English language support
-- **Text Processor**: Cleans and formats extracted text, removing excessive whitespace
-- **Progress Tracking**: Provides real-time feedback during batch processing
-- **Result Display**: Shows extracted text with download capabilities
+### Core Application (`ocr_number_extractor/lib/main.dart`)
+- **ZIP File Handler**: Extracts and processes images from ZIP archives
+- **OCR Engine**: Google ML Kit processes images for text recognition
+- **Crop Functionality**: Define crop area on first image, apply to all images
+- **Number Extraction**: Filters extracted text to only numbers with 5+ digits
+- **Batch Processing**: Progress tracking for multiple image processing
+- **Result Export**: Formats output as "imagename1 numbers imagename2 numbers"
 
-### Image Format Support
-- PNG, JPG, JPEG, BMP, TIFF, TIF, WEBP
-- Automatic RGB conversion for compatibility
-- Error handling for unsupported or corrupted files
+### Supported Features
+- Offline processing (no internet required)
+- ZIP folder batch processing
+- Smart cropping (crop once, apply to all)
+- Number filtering (5+ digits only)
+- Progress tracking with visual feedback
+- File permission handling
 
-### Configuration
-- **Streamlit Config**: Custom server settings for deployment (port 5000, headless mode)
-- **Page Configuration**: Wide layout with custom title and icon
-- **Replit Integration**: Configured for autoscale deployment with proper workflow setup
+### Android Configuration
+- **Storage Permissions**: Access to device storage for file selection
+- **File Picker Integration**: Native Android file selection interface
+- **ML Kit Integration**: Offline text recognition capabilities
+- **Target SDK**: Android 12+ compatibility
 
 ## Data Flow
 
-1. **File Upload**: Users upload single or multiple image files through Streamlit interface
-2. **Format Validation**: System checks file extensions against supported formats
-3. **Image Processing**: PIL opens and converts images to RGB format if needed
-4. **OCR Extraction**: Pytesseract processes each image to extract text content
-5. **Text Cleaning**: Extracted text is cleaned and formatted for readability
-6. **Result Display**: Processed text is displayed with options for download
-7. **Batch Processing**: Progress tracking for multiple file processing
+1. **ZIP Selection**: User selects ZIP folder containing images
+2. **Archive Extraction**: ZIP contents extracted to temporary storage
+3. **Image Validation**: Filter for supported image formats
+4. **Crop Definition**: User defines crop area on first image
+5. **Batch Processing**: Same crop area applied to all images
+6. **OCR Processing**: Google ML Kit extracts text from cropped regions
+7. **Number Filtering**: Extract only numbers with 5+ digits
+8. **Result Formatting**: Export as "imagename1 numbers imagename2 numbers"
 
 ## External Dependencies
 
-### Core Libraries
-- **Streamlit (≥1.46.0)**: Web application framework and UI
-- **Pytesseract (≥0.3.13)**: Python wrapper for Tesseract OCR engine
-- **Pillow (≥11.2.1)**: Image processing and format handling
-- **Pathlib (≥1.0.1)**: File system path operations
+### Flutter Dependencies
+- **Flutter SDK (≥3.22.0)**: Mobile app development framework
+- **google_mlkit_text_recognition (^0.10.0)**: Offline OCR processing
+- **file_picker (^6.1.1)**: Native file selection interface
+- **archive (^3.4.9)**: ZIP file extraction and processing
+- **path_provider (^2.1.1)**: File system path management
+- **permission_handler (^11.0.1)**: Android permissions management
 
-### System Dependencies (Nix packages)
-- **Tesseract**: OCR engine for text extraction
-- **Image Libraries**: freetype, lcms2, libimagequant, libjpeg, libtiff, libwebp, openjpeg
-- **System Libraries**: zlib, libxcrypt, tcl, tk
+### Build Dependencies
+- **Java 17**: Android compilation requirements
+- **Android SDK**: Native Android development tools
+- **Flutter Build Tools**: APK generation and optimization
 
 ## Deployment Strategy
 
-**Platform**: Replit with Nix environment management
-**Runtime**: Python 3.11 with stable Nix channel (24_05)
-**Scaling**: Autoscale deployment target for handling variable loads
-**Port Configuration**: Application runs on port 5000 with external access
-**Startup Command**: `streamlit run app.py --server.port 5000`
+**Platform**: GitHub Actions automated building
+**Build Environment**: Ubuntu with Flutter SDK and Android tools
+**APK Generation**: Release mode compilation with optimization
+**Distribution**: GitHub Artifacts and Releases for download
+**Installation**: Direct APK installation on Android devices
 
-The deployment uses Replit's workflow system with parallel task execution, ensuring reliable startup and port binding for web access.
+The deployment uses GitHub Actions workflow for automated APK building, eliminating need for local development environment setup.
 
 ## User Preferences
 
