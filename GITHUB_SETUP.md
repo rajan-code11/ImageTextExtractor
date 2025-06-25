@@ -1,93 +1,63 @@
-# GitHub Actions Setup for OCR Number Extractor APK
+# Shell Commands to Push OCR Project to GitHub
 
-## Quick Setup Guide
+## Step 1: Create GitHub Repository First
+1. Go to **github.com** on your phone browser
+2. Click **"New repository"** 
+3. Repository name: `ocr-number-extractor`
+4. Make it **Public** (for free GitHub Actions)
+5. **DO NOT** initialize with README (your project already has files)
+6. Click **"Create repository"**
+7. **Copy the repository URL** (like: https://github.com/yourusername/ocr-number-extractor.git)
 
-### 1. Create GitHub Repository
+## Step 2: Run These Commands in Replit Shell
+
+Replace `YOUR_USERNAME` with your actual GitHub username:
+
 ```bash
-# Create new repository on GitHub.com
-# Name: ocr-number-extractor (or any name you prefer)
+# Add all files to git
+git add .
+
+# Commit your project
+git commit -m "Complete OCR Android app with offline number extraction"
+
+# Add GitHub as remote (replace YOUR_USERNAME)
+git remote add origin https://github.com/YOUR_USERNAME/ocr-number-extractor.git
+
+# Push to GitHub
+git push -u origin main
 ```
 
-### 2. Upload Project Files
-Upload these files to your GitHub repository:
+## Alternative: If you get branch errors
+```bash
+# Check current branch
+git branch
 
-**Root directory:**
-- `.github/workflows/build-apk.yml` (GitHub Actions workflow)
-- `GITHUB_SETUP.md` (this file)
-- `ANDROID_APP_SUMMARY.md`
-- `README.md`
+# If not on main, create and switch to main
+git checkout -b main
 
-**Flutter project directory:**
-- `ocr_number_extractor/` (entire folder with all contents)
-
-### 3. File Structure Should Look Like:
-```
-your-repo/
-├── .github/
-│   └── workflows/
-│       └── build-apk.yml
-├── ocr_number_extractor/
-│   ├── lib/
-│   │   └── main.dart
-│   ├── android/
-│   ├── pubspec.yaml
-│   └── ... (all Flutter files)
-├── GITHUB_SETUP.md
-├── ANDROID_APP_SUMMARY.md
-└── README.md
+# Then push
+git push -u origin main
 ```
 
-### 4. Trigger Build
-Once uploaded, the GitHub Action will automatically:
-- **Trigger on**: Push to main/master branch, pull requests, or manual trigger
-- **Build process**: Setup Flutter, get dependencies, build APK
-- **Output**: APK file available as downloadable artifact
+## Step 3: After Pushing
+1. **Check your GitHub repository** - files should appear
+2. **GitHub Actions** will automatically start building APK
+3. **Wait 10 minutes** for build to complete
+4. **Go to Actions tab** → **Latest workflow** → **Download APK**
 
-### 5. Download Your APK
+## If Git Push Asks for Login:
+```bash
+# Set your GitHub credentials
+git config --global user.name "Your Name"
+git config --global user.email "your.email@example.com"
+```
 
-**Option A: From Actions Tab**
-1. Go to your repository on GitHub
-2. Click "Actions" tab
-3. Click on the latest successful build
-4. Scroll down to "Artifacts" section
-5. Download "ocr-number-extractor-apk"
+## Quick Copy-Paste Commands:
+```bash
+git add .
+git commit -m "OCR Android app ready"
+git remote add origin https://github.com/YOUR_USERNAME/ocr-number-extractor.git
+git push -u origin main
+```
 
-**Option B: From Releases**
-1. Go to your repository on GitHub
-2. Click "Releases" on the right sidebar
-3. Download the APK from the latest release
-
-## Manual Trigger
-You can manually trigger a build:
-1. Go to "Actions" tab
-2. Click "Build Android APK" workflow
-3. Click "Run workflow" button
-4. Select branch and click "Run workflow"
-
-## Troubleshooting
-
-### If Build Fails:
-1. Check the Actions log for error details
-2. Most common issues:
-   - **Dependency conflicts**: Update pubspec.yaml versions
-   - **Flutter version**: Workflow uses Flutter 3.22.0
-   - **Java issues**: Workflow uses Java 17
-
-### If You Need to Modify:
-- Edit files in `ocr_number_extractor/`
-- Push changes to trigger automatic rebuild
-- APK will be generated with your changes
-
-## Security Notes
-- This workflow only builds APK, no secrets required
-- APK is uploaded as public artifact (downloadable by anyone with repo access)
-- For private repos, artifacts are only accessible to repo members
-
-## Customization
-You can modify `.github/workflows/build-apk.yml` to:
-- Change Flutter version
-- Add code signing (requires secrets setup)
-- Modify build triggers
-- Change artifact retention period
-
-The workflow will automatically build your APK whenever you push changes to the Flutter project!
+Just replace `YOUR_USERNAME` with your GitHub username and run these in Replit shell!
