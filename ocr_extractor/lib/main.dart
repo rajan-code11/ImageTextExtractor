@@ -121,7 +121,7 @@ class _OCRHomePageState extends State<OCRHomePage> {
       try {
         final filename = _imageFiles[i].path.split('/').last;
         final numbers = await _extractNumbers(_imageFiles[i]);
-        results.add('$filename $numbers');
+        results.add('$filename, $numbers');
       } catch (e) {
         final filename = _imageFiles[i].path.split('/').last;
         results.add('$filename [Error]');
