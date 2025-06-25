@@ -12,7 +12,7 @@ void main() {
 }
 
 class OCRNumberExtractorApp extends StatelessWidget {
-  const OCRNumberExtractorApp({Key? key}) : super(key: key);
+  const OCRNumberExtractorApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +28,7 @@ class OCRNumberExtractorApp extends StatelessWidget {
 }
 
 class OCRHomePage extends StatefulWidget {
-  const OCRHomePage({Key? key}) : super(key: key);
+  const OCRHomePage({super.key});
 
   @override
   State<OCRHomePage> createState() => _OCRHomePageState();
@@ -103,79 +103,50 @@ class _OCRHomePageState extends State<OCRHomePage> {
         }
       }
     }
-
+    
+    setState(() {
+      _imageFiles = imageFiles;
+    });
+    
     if (imageFiles.isNotEmpty) {
-      setState(() {
-        _imageFiles = imageFiles;
-      });
-      
-      // Show confirmation dialog instead of cropping for now
-      _showProcessDialog();
-    } else {
-      _showErrorDialog('No image files found in ZIP');
+      await _processImages();
     }
   }
 
-  void _showProcessDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Ready to Process'),
-        content: Text('Found ${_imageFiles.length} images. Process all images to extract numbers with 5+ digits?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _processAllImages();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Process All'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _processAllImages() async {
-    if (_imageFiles.isEmpty) return;
-
+  Future<void> _processImages() async {
     setState(() {
       _isProcessing = true;
-      _results.clear();
+      _processingStatus = 'Processing images...';
     });
 
+    List<String> results = [];
+    
     for (int i = 0; i < _imageFiles.length; i++) {
       setState(() {
         _processingStatus = 'Processing image ${i + 1} of ${_imageFiles.length}...';
       });
-
+      
       try {
-        final result = await _extractNumbersFromImage(_imageFiles[i]);
-        _results.add('${_imageFiles[i].path.split('/').last} $result');
+        String filename = _imageFiles[i].path.split('/').last;
+        String extractedText = await _extractTextFromImage(_imageFiles[i]);
+        results.add('$filename $extractedText');
       } catch (e) {
-        _results.add('${_imageFiles[i].path.split('/').last} [Error: $e]');
+        results.add('${_imageFiles[i].path.split('/').last} [Error: $e]');
       }
     }
-
+    
     setState(() {
+      _results = results;
       _isProcessing = false;
-      _processingStatus = '';
     });
-
+    
     _showResultsDialog();
   }
 
-  Future<String> _extractNumbersFromImage(File imageFile) async {
+  Future<String> _extractTextFromImage(File imageFile) async {
     try {
       final inputImage = InputImage.fromFile(imageFile);
-      final recognizedText = await _textRecognizer.processImage(inputImage);
+      final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
       
       String allText = recognizedText.text;
       
@@ -255,9 +226,11 @@ class _OCRHomePageState extends State<OCRHomePage> {
       final file = File('${directory!.path}/ocr_results_${DateTime.now().millisecondsSinceEpoch}.txt');
       await file.writeAsString(_results.join('     '));
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Results saved to ${file.path}')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Results saved to ${file.path}')),
+        );
+      }
     } catch (e) {
       _showErrorDialog('Error saving results: $e');
     }
@@ -368,28 +341,24 @@ class _OCRHomePageState extends State<OCRHomePage> {
                 ),
               ),
             if (_results.isNotEmpty)
-              Expanded(
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Latest Results:',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        Expanded(
-                          child: SingleChildScrollView(
-                            child: Text(
-                              _results.join('     '),
-                              style: const TextStyle(fontSize: 14),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Processing Complete!',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      Text('Extracted numbers from ${_results.length} images'),
+                      const SizedBox(height: 8),
+                      ElevatedButton(
+                        onPressed: _showResultsDialog,
+                        child: const Text('View Results'),
+                      ),
+                    ],
                   ),
                 ),
               ),
