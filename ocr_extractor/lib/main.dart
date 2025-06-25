@@ -1,5 +1,3 @@
-import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:archive/archive.dart';
 import 'package:path_provider/path_provider.dart';
@@ -53,9 +51,10 @@ class _OCRHomePageState extends State<OCRHomePage> {
     }
   }
 
+  // ZIP selection
   Future<void> _pickZipFile() async {
     await _requestPermissions();
-    
+
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['zip'],
@@ -68,7 +67,7 @@ class _OCRHomePageState extends State<OCRHomePage> {
       });
 
       try {
-        await _extractImages(result.files.single.path!);
+        await _extractImagesFromZip(result.files.single.path!);
         await _processImages();
       } catch (e) {
         _showError('Error: $e');
@@ -80,20 +79,47 @@ class _OCRHomePageState extends State<OCRHomePage> {
     }
   }
 
-  Future<void> _extractImages(String zipPath) async {
+  // New: Folder selection
+  Future<void> _pickImageFolder() async {
+    await _requestPermissions();
+
+    String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+    if (selectedDirectory == null) return;
+
+    setState(() {
+      _isProcessing = true;
+      _status = 'Reading images from folder...';
+    });
+
+    try {
+      await _extractImagesFromFolder(selectedDirectory);
+      await _processImages();
+    } catch (e) {
+      _showError('Error: $e');
+    }
+
+    setState(() {
+      _isProcessing = false;
+    });
+  }
+
+  // Extract images from ZIP
+  Future<void> _extractImagesFromZip(String zipPath) async {
     final bytes = await File(zipPath).readAsBytes();
     final archive = ZipDecoder().decodeBytes(bytes);
     final tempDir = await getTemporaryDirectory();
-    
+
     List<File> imageFiles = [];
-    
+
     for (final file in archive) {
       if (file.isFile) {
         final name = file.name.toLowerCase();
-        if (name.endsWith('.jpg') || name.endsWith('.jpeg') || 
-            name.endsWith('.png') || name.endsWith('.bmp') || 
-            name.endsWith('.tiff') || name.endsWith('.webp')) {
-          
+        if (name.endsWith('.jpg') ||
+            name.endsWith('.jpeg') ||
+            name.endsWith('.png') ||
+            name.endsWith('.bmp') ||
+            name.endsWith('.tiff') ||
+            name.endsWith('.webp')) {
           final data = file.content as List<int>;
           final imageFile = File('${tempDir.path}/${file.name}');
           await imageFile.create(recursive: true);
@@ -102,46 +128,70 @@ class _OCRHomePageState extends State<OCRHomePage> {
         }
       }
     }
-    
+
     setState(() {
       _imageFiles = imageFiles;
     });
   }
 
+  // Extract images from selected folder
+  Future<void> _extractImagesFromFolder(String folderPath) async {
+    final dir = Directory(folderPath);
+    final files = await dir.list().toList();
+
+    List<File> imageFiles = [];
+    for (final entity in files) {
+      if (entity is File) {
+        final name = entity.path.toLowerCase();
+        if (name.endsWith('.jpg') ||
+            name.endsWith('.jpeg') ||
+            name.endsWith('.png') ||
+            name.endsWith('.bmp') ||
+            name.endsWith('.tiff') ||
+            name.endsWith('.webp')) {
+          imageFiles.add(entity);
+        }
+      }
+    }
+    setState(() {
+      _imageFiles = imageFiles;
+    });
+  }
+
+  // OCR processing
   Future<void> _processImages() async {
     if (_imageFiles.isEmpty) return;
-    
+
     List<String> results = [];
-    
+
     for (int i = 0; i < _imageFiles.length; i++) {
       setState(() {
         _status = 'Processing ${i + 1}/${_imageFiles.length}...';
       });
-      
+
       try {
         final filename = _imageFiles[i].path.split('/').last;
         final numbers = await _extractNumbers(_imageFiles[i]);
-        results.add('$filename , $numbers');
+        results.add('$filename:\t$numbers');
       } catch (e) {
         final filename = _imageFiles[i].path.split('/').last;
-        results.add('$filename [Error]');
+        results.add('$filename:\t[Error]');
       }
     }
-    
+
     setState(() {
       _results = results;
     });
-    
+
     _showResults();
   }
 
   Future<String> _extractNumbers(File imageFile) async {
-    final inputImage = InputImage.fromFile(imageFile);
-    final recognizedText = await _textRecognizer.processImage(inputImage);
-    
+    final inputImage = InputImage.fromFile(imageFile.processImage);
+
     final RegExp numberRegex = RegExp(r'\d+');
     final matches = numberRegex.allMatches(recognizedText.text);
-    
+
     List<String> longNumbers = [];
     for (final match in matches) {
       final number = match.group(0)!;
@@ -149,7 +199,7 @@ class _OCRHomePageState extends State<OCRHomePage> {
         longNumbers.add(number);
       }
     }
-    
+
     return longNumbers.isNotEmpty ? longNumbers.join(' ') : '[No numbers]';
   }
 
@@ -162,7 +212,7 @@ class _OCRHomePageState extends State<OCRHomePage> {
           width: double.maxFinite,
           height: 300,
           child: SingleChildScrollView(
-            child: Text(_results.join('     ')),
+            child: Text(_results.join('\n')),
           ),
         ),
         actions: [
@@ -179,17 +229,24 @@ class _OCRHomePageState extends State<OCRHomePage> {
     );
   }
 
+  // Ask user for output file path and save there
   Future<void> _saveResults() async {
     try {
-      final directory = await getExternalStorageDirectory();
-      if (directory != null) {
-        final file = File('${directory.path}/ocr_results.txt');
-        await file.writeAsString(_results.join('     '));
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Saved to ${file.path}')),
-          );
-        }
+      String? outputPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Select Output TXT File',
+        fileName: 'ocr_results.txt',
+        type: FileType.custom,
+        allowedExtensions: ['txt'],
+      );
+      if (outputPath == null) return; // User cancelled
+
+      final file = File(outputPath);
+      await file.writeAsString(_results.join('\n'));
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Saved to $outputPath')),
+        );
       }
     } catch (e) {
       _showError('Save error: $e');
@@ -236,14 +293,14 @@ class _OCRHomePageState extends State<OCRHomePage> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Extract numbers (5+ digits) from images in ZIP folders',
+                      'Extract numbers (5+ digits) from images in ZIP folders or a folder full of images',
                       style: TextStyle(fontSize: 16),
                     ),
                     const SizedBox(height: 16),
                     const Text('How it works:'),
-                    const Text('1. Select ZIP file with images'),
+                    const Text('1. Select ZIP file OR a folder with images'),
                     const Text('2. Extract numbers with 5+ digits'),
-                    const Text('3. Save results in specified format'),
+                    const Text('3. Save results as TXT wherever you want'),
                   ],
                 ),
               ),
@@ -262,7 +319,7 @@ class _OCRHomePageState extends State<OCRHomePage> {
                   ),
                 ),
               )
-            else
+            else ...[
               ElevatedButton.icon(
                 onPressed: _pickZipFile,
                 icon: const Icon(Icons.folder_zip),
@@ -273,6 +330,18 @@ class _OCRHomePageState extends State<OCRHomePage> {
                   padding: const EdgeInsets.all(16),
                 ),
               ),
+              const SizedBox(height: 10),
+              ElevatedButton.icon(
+                onPressed: _pickImageFolder,
+                icon: const Icon(Icons.folder),
+                label: const Text('Select Image Folder'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.all(16),
+                ),
+              ),
+            ],
             const SizedBox(height: 20),
             if (_imageFiles.isNotEmpty)
               Card(
