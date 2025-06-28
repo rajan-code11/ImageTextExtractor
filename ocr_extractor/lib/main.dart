@@ -10,13 +10,20 @@ void main() {
   runApp(const OCRNumberExtractorApp());
 }
 
+enum ExtractionMode {
+  words,
+  numbers,
+  everything,
+  numbers5Plus,
+}
+
 class OCRNumberExtractorApp extends StatelessWidget {
   const OCRNumberExtractorApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'OCR Number Extractor',
+      title: 'OCR Extractor',
       theme: ThemeData(
         primarySwatch: Colors.blue,
         useMaterial3: true,
@@ -39,6 +46,7 @@ class _OCRHomePageState extends State<OCRHomePage> {
   bool _isProcessing = false;
   String _processingStatus = '';
   List<Map<String, String>> _results = [];
+  ExtractionMode _extractionMode = ExtractionMode.words;
 
   @override
   void dispose() {
@@ -166,7 +174,7 @@ class _OCRHomePageState extends State<OCRHomePage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Ready to Process'),
-        content: Text('Found ${_imageFiles.length} images. Process all images to extract numbers with 5+ digits?'),
+        content: Text('Found ${_imageFiles.length} images. Process all images?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -202,7 +210,7 @@ class _OCRHomePageState extends State<OCRHomePage> {
       });
 
       try {
-        final text = await _extractNumbersFromImage(_imageFiles[i]);
+        final text = await _extractTextFromImage(_imageFiles[i]);
         _results.add({
           'filename': _imageFiles[i].path.split('/').last,
           'extracted': text
@@ -223,29 +231,34 @@ class _OCRHomePageState extends State<OCRHomePage> {
     _showResultsDialog();
   }
 
-  Future<String> _extractNumbersFromImage(File imageFile) async {
+  Future<String> _extractTextFromImage(File imageFile) async {
     try {
       final inputImage = InputImage.fromFile(imageFile);
       final recognizedText = await _textRecognizer.processImage(inputImage);
-
       String allText = recognizedText.text;
 
-      // Extract numbers with more than 5 digits
-      RegExp numberRegex = RegExp(r'\d+');
-      Iterable<Match> matches = numberRegex.allMatches(allText);
-
-      List<String> longNumbers = [];
-      for (Match match in matches) {
-        String number = match.group(0)!;
-        if (number.length > 5) {
-          longNumbers.add(number);
-        }
-      }
-
-      if (longNumbers.isNotEmpty) {
-        return longNumbers.join(' ');
-      } else {
-        return '[No numbers with 5+ digits found]';
+      switch (_extractionMode) {
+        case ExtractionMode.words:
+          // Extract only words (no numbers)
+          RegExp wordRegex = RegExp(r'\b([A-Za-z]+)\b');
+          Iterable<Match> matches = wordRegex.allMatches(allText);
+          List<String> words = matches.map((m) => m.group(0)!).toList();
+          return words.isNotEmpty ? words.join(' ') : '[No words found]';
+        case ExtractionMode.numbers:
+          // Extract only numbers (all numbers, regardless of length)
+          RegExp numRegex = RegExp(r'\d+');
+          Iterable<Match> matches = numRegex.allMatches(allText);
+          List<String> numbers = matches.map((m) => m.group(0)!).toList();
+          return numbers.isNotEmpty ? numbers.join(' ') : '[No numbers found]';
+        case ExtractionMode.everything:
+          // Extract everything
+          return allText.isNotEmpty ? allText : '[No text found]';
+        case ExtractionMode.numbers5Plus:
+          // Extract only numbers with more than 5 digits
+          RegExp num5Regex = RegExp(r'\d{6,}');
+          Iterable<Match> matches = num5Regex.allMatches(allText);
+          List<String> longNumbers = matches.map((m) => m.group(0)!).toList();
+          return longNumbers.isNotEmpty ? longNumbers.join(' ') : '[No numbers with 6+ digits found]';
       }
     } catch (e) {
       return '[Error: $e]';
@@ -312,12 +325,10 @@ class _OCRHomePageState extends State<OCRHomePage> {
 
   Future<void> _saveResults() async {
     try {
-      // Ask for directory path every time
       String? selectedDirectory = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Select Folder to Save Results');
       if (selectedDirectory == null) return;
 
       final file = File('$selectedDirectory/ocr_results_${DateTime.now().millisecondsSinceEpoch}.txt');
-      // Write as CSV-like two columns
       String content = 'Image Filename\tExtracted Text\n' +
           _results.map((row) => '${row['filename']}\t${row['extracted']}').join('\n');
       await file.writeAsString(content);
@@ -346,11 +357,76 @@ class _OCRHomePageState extends State<OCRHomePage> {
     );
   }
 
+  Widget _buildExtractionModeSelector() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Extraction Mode',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            ListTile(
+              title: const Text('Only Words (No numbers)'),
+              leading: Radio<ExtractionMode>(
+                value: ExtractionMode.words,
+                groupValue: _extractionMode,
+                onChanged: (ExtractionMode? value) {
+                  setState(() {
+                    _extractionMode = value!;
+                  });
+                },
+              ),
+            ),
+            ListTile(
+              title: const Text('Only Numbers'),
+              leading: Radio<ExtractionMode>(
+                value: ExtractionMode.numbers,
+                groupValue: _extractionMode,
+                onChanged: (ExtractionMode? value) {
+                  setState(() {
+                    _extractionMode = value!;
+                  });
+                },
+              ),
+            ),
+            ListTile(
+              title: const Text('Everything (Words & Numbers)'),
+              leading: Radio<ExtractionMode>(
+                value: ExtractionMode.everything,
+                groupValue: _extractionMode,
+                onChanged: (ExtractionMode? value) {
+                  setState(() {
+                    _extractionMode = value!;
+                  });
+                },
+              ),
+            ),
+            ListTile(
+              title: const Text('5+ Digit Numbers Only'),
+              leading: Radio<ExtractionMode>(
+                value: ExtractionMode.numbers5Plus,
+                groupValue: _extractionMode,
+                onChanged: (ExtractionMode? value) {
+                  setState(() {
+                    _extractionMode = value!;
+                  });
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('OCR Number Extractor'),
+        title: const Text('OCR Extractor'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
       body: Padding(
@@ -365,12 +441,12 @@ class _OCRHomePageState extends State<OCRHomePage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'OCR Number Extractor',
+                      'OCR Extractor',
                       style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                     ),
                     SizedBox(height: 8),
                     Text(
-                      'Extract numbers (5+ digits) from images in ZIP folders or folders using offline OCR',
+                      'Extract text or numbers from images in ZIP folders or image folders using offline OCR',
                       style: TextStyle(fontSize: 16),
                     ),
                   ],
@@ -378,26 +454,7 @@ class _OCRHomePageState extends State<OCRHomePage> {
               ),
             ),
             const SizedBox(height: 20),
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'How it works:',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    SizedBox(height: 8),
-                    Text('1. Select a ZIP file or a folder containing images'),
-                    Text('2. Crop the first image to define the area of interest (optional/future)'),
-                    Text('3. The same crop area will be applied to all images (future)'),
-                    Text('4. Only numbers with 5+ digits will be extracted'),
-                    Text('5. Results are saved in two columns: filename and extracted text'),
-                  ],
-                ),
-              ),
-            ),
+            _buildExtractionModeSelector(),
             const SizedBox(height: 20),
             if (_isProcessing)
               Card(
