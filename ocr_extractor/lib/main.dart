@@ -47,6 +47,8 @@ class _OCRHomePageState extends State<OCRHomePage> {
   String _processingStatus = '';
   List<Map<String, String>> _results = [];
   ExtractionMode _extractionMode = ExtractionMode.words;
+  bool _expandExtraction = false; // for ExpansionTile
+  List<Map<String, String>> _txtResults = [];
 
   @override
   void dispose() {
@@ -61,24 +63,20 @@ class _OCRHomePageState extends State<OCRHomePage> {
 
   Future<void> _pickZipFile() async {
     await _requestPermissions();
-
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['zip'],
     );
-
     if (result != null) {
       setState(() {
         _isProcessing = true;
         _processingStatus = 'Extracting images from ZIP...';
       });
-
       try {
         await _extractImagesFromZip(result.files.single.path!);
       } catch (e) {
         _showErrorDialog('Error extracting ZIP: $e');
       }
-
       setState(() {
         _isProcessing = false;
       });
@@ -87,20 +85,17 @@ class _OCRHomePageState extends State<OCRHomePage> {
 
   Future<void> _pickImageFolder() async {
     await _requestPermissions();
-
     String? selectedDirectory = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Select Folder with Images');
     if (selectedDirectory != null) {
       setState(() {
         _isProcessing = true;
         _processingStatus = 'Reading images from folder...';
       });
-
       try {
         await _extractImagesFromFolder(selectedDirectory);
       } catch (e) {
         _showErrorDialog('Error reading folder: $e');
       }
-
       setState(() {
         _isProcessing = false;
       });
@@ -110,10 +105,8 @@ class _OCRHomePageState extends State<OCRHomePage> {
   Future<void> _extractImagesFromZip(String zipPath) async {
     final bytes = await File(zipPath).readAsBytes();
     final archive = ZipDecoder().decodeBytes(bytes);
-
     List<File> imageFiles = [];
     final tempDir = await getTemporaryDirectory();
-
     for (final file in archive) {
       if (file.isFile) {
         final filename = file.name.toLowerCase();
@@ -126,12 +119,10 @@ class _OCRHomePageState extends State<OCRHomePage> {
         }
       }
     }
-
     if (imageFiles.isNotEmpty) {
       setState(() {
         _imageFiles = imageFiles;
       });
-
       _showProcessDialog();
     } else {
       _showErrorDialog('No image files found in ZIP');
@@ -141,14 +132,12 @@ class _OCRHomePageState extends State<OCRHomePage> {
   Future<void> _extractImagesFromFolder(String folderPath) async {
     final directory = Directory(folderPath);
     final files = directory.listSync(recursive: false);
-
     List<File> imageFiles = [];
     for (var entity in files) {
       if (entity is File && _isImageFile(entity.path)) {
         imageFiles.add(entity);
       }
     }
-
     if (imageFiles.isNotEmpty) {
       setState(() {
         _imageFiles = imageFiles;
@@ -198,17 +187,14 @@ class _OCRHomePageState extends State<OCRHomePage> {
 
   Future<void> _processAllImages() async {
     if (_imageFiles.isEmpty) return;
-
     setState(() {
       _isProcessing = true;
       _results.clear();
     });
-
     for (int i = 0; i < _imageFiles.length; i++) {
       setState(() {
         _processingStatus = 'Processing image ${i + 1} of ${_imageFiles.length}...';
       });
-
       try {
         final text = await _extractTextFromImage(_imageFiles[i]);
         _results.add({
@@ -222,13 +208,13 @@ class _OCRHomePageState extends State<OCRHomePage> {
         });
       }
     }
-
+    // Sort by filename
+    _results.sort((a, b) => a['filename']!.compareTo(b['filename']!));
     setState(() {
       _isProcessing = false;
       _processingStatus = '';
     });
-
-    _showResultsDialog();
+    _showResultsDialog(_results, "Extraction Results");
   }
 
   Future<String> _extractTextFromImage(File imageFile) async {
@@ -236,25 +222,20 @@ class _OCRHomePageState extends State<OCRHomePage> {
       final inputImage = InputImage.fromFile(imageFile);
       final recognizedText = await _textRecognizer.processImage(inputImage);
       String allText = recognizedText.text;
-
       switch (_extractionMode) {
         case ExtractionMode.words:
-          // Extract only words (no numbers)
           RegExp wordRegex = RegExp(r'\b([A-Za-z]+)\b');
           Iterable<Match> matches = wordRegex.allMatches(allText);
           List<String> words = matches.map((m) => m.group(0)!).toList();
           return words.isNotEmpty ? words.join(' ') : '[No words found]';
         case ExtractionMode.numbers:
-          // Extract only numbers (all numbers, regardless of length)
           RegExp numRegex = RegExp(r'\d+');
           Iterable<Match> matches = numRegex.allMatches(allText);
           List<String> numbers = matches.map((m) => m.group(0)!).toList();
           return numbers.isNotEmpty ? numbers.join(' ') : '[No numbers found]';
         case ExtractionMode.everything:
-          // Extract everything
           return allText.isNotEmpty ? allText : '[No text found]';
         case ExtractionMode.numbers5Plus:
-          // Extract only numbers with more than 5 digits
           RegExp num5Regex = RegExp(r'\d{6,}');
           Iterable<Match> matches = num5Regex.allMatches(allText);
           List<String> longNumbers = matches.map((m) => m.group(0)!).toList();
@@ -265,7 +246,37 @@ class _OCRHomePageState extends State<OCRHomePage> {
     }
   }
 
-  void _showResultsDialog() {
+  Future<void> _pickTxtFileAndExtractNumbers() async {
+    await _requestPermissions();
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['txt'],
+    );
+    if (result != null) {
+      setState(() {
+        _isProcessing = true;
+        _processingStatus = 'Processing TXT file...';
+        _txtResults.clear();
+      });
+      File txtFile = File(result.files.single.path!);
+      String content = await txtFile.readAsString();
+      RegExp num6Regex = RegExp(r'\d{7,}');
+      Iterable<Match> matches = num6Regex.allMatches(content);
+      List<String> foundNumbers =
+          matches.map((m) => m.group(0)!).toSet().toList(); // Unique numbers
+      foundNumbers.sort();
+      for (String number in foundNumbers) {
+        _txtResults.add({'filename': txtFile.path.split('/').last, 'extracted': number});
+      }
+      setState(() {
+        _isProcessing = false;
+        _processingStatus = '';
+      });
+      _showResultsDialog(_txtResults, "TXT Fix (7+ digit numbers)");
+    }
+  }
+
+  void _showResultsDialog(List<Map<String, String>> results, String title) {
     showDialog(
       context: context,
       builder: (context) => Dialog(
@@ -275,19 +286,20 @@ class _OCRHomePageState extends State<OCRHomePage> {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              const Text(
-                'Extraction Results',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              Text(
+                title,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
               Expanded(
                 child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
                   child: DataTable(
                     columns: const [
                       DataColumn(label: Text('Image Filename')),
                       DataColumn(label: Text('Extracted Text')),
                     ],
-                    rows: _results.map((row) {
+                    rows: results.map((row) {
                       return DataRow(
                         cells: [
                           DataCell(Text(row['filename'] ?? '')),
@@ -307,7 +319,7 @@ class _OCRHomePageState extends State<OCRHomePage> {
                     child: const Text('Close'),
                   ),
                   ElevatedButton(
-                    onPressed: _saveResults,
+                    onPressed: () => _saveResults(results),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
@@ -323,14 +335,13 @@ class _OCRHomePageState extends State<OCRHomePage> {
     );
   }
 
-  Future<void> _saveResults() async {
+  Future<void> _saveResults(List<Map<String, String>> results) async {
     try {
       String? selectedDirectory = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Select Folder to Save Results');
       if (selectedDirectory == null) return;
-
       final file = File('$selectedDirectory/ocr_results_${DateTime.now().millisecondsSinceEpoch}.txt');
       String content = 'Image Filename\tExtracted Text\n' +
-          _results.map((row) => '${row['filename']}\t${row['extracted']}').join('\n');
+          results.map((row) => '${row['filename']}\t${row['extracted']}').join('\n');
       await file.writeAsString(content);
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -357,69 +368,76 @@ class _OCRHomePageState extends State<OCRHomePage> {
     );
   }
 
-  Widget _buildExtractionModeSelector() {
+  Widget _buildExpandableExtractionModeSelector() {
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Extraction Mode',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            ListTile(
-              title: const Text('Only Words (No numbers)'),
-              leading: Radio<ExtractionMode>(
-                value: ExtractionMode.words,
-                groupValue: _extractionMode,
-                onChanged: (ExtractionMode? value) {
-                  setState(() {
-                    _extractionMode = value!;
-                  });
-                },
-              ),
-            ),
-            ListTile(
-              title: const Text('Only Numbers'),
-              leading: Radio<ExtractionMode>(
-                value: ExtractionMode.numbers,
-                groupValue: _extractionMode,
-                onChanged: (ExtractionMode? value) {
-                  setState(() {
-                    _extractionMode = value!;
-                  });
-                },
-              ),
-            ),
-            ListTile(
-              title: const Text('Everything (Words & Numbers)'),
-              leading: Radio<ExtractionMode>(
-                value: ExtractionMode.everything,
-                groupValue: _extractionMode,
-                onChanged: (ExtractionMode? value) {
-                  setState(() {
-                    _extractionMode = value!;
-                  });
-                },
-              ),
-            ),
-            ListTile(
-              title: const Text('5+ Digit Numbers Only'),
-              leading: Radio<ExtractionMode>(
-                value: ExtractionMode.numbers5Plus,
-                groupValue: _extractionMode,
-                onChanged: (ExtractionMode? value) {
-                  setState(() {
-                    _extractionMode = value!;
-                  });
-                },
-              ),
-            ),
-          ],
+      child: ExpansionTile(
+        initiallyExpanded: _expandExtraction,
+        onExpansionChanged: (expanded) {
+          setState(() {
+            _expandExtraction = expanded;
+          });
+        },
+        title: Text(
+          'Extraction Mode (${_getExtractionModeName(_extractionMode)})',
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
+        children: [
+          RadioListTile<ExtractionMode>(
+            title: const Text('Only Words (No numbers)'),
+            value: ExtractionMode.words,
+            groupValue: _extractionMode,
+            onChanged: (ExtractionMode? value) {
+              setState(() {
+                _extractionMode = value!;
+              });
+            },
+          ),
+          RadioListTile<ExtractionMode>(
+            title: const Text('Only Numbers'),
+            value: ExtractionMode.numbers,
+            groupValue: _extractionMode,
+            onChanged: (ExtractionMode? value) {
+              setState(() {
+                _extractionMode = value!;
+              });
+            },
+          ),
+          RadioListTile<ExtractionMode>(
+            title: const Text('Everything (Words & Numbers)'),
+            value: ExtractionMode.everything,
+            groupValue: _extractionMode,
+            onChanged: (ExtractionMode? value) {
+              setState(() {
+                _extractionMode = value!;
+              });
+            },
+          ),
+          RadioListTile<ExtractionMode>(
+            title: const Text('6+ Digit Numbers Only'),
+            value: ExtractionMode.numbers5Plus,
+            groupValue: _extractionMode,
+            onChanged: (ExtractionMode? value) {
+              setState(() {
+                _extractionMode = value!;
+              });
+            },
+          ),
+        ],
       ),
     );
+  }
+
+  String _getExtractionModeName(ExtractionMode mode) {
+    switch (mode) {
+      case ExtractionMode.words:
+        return "Only Words";
+      case ExtractionMode.numbers:
+        return "Only Numbers";
+      case ExtractionMode.everything:
+        return "Everything";
+      case ExtractionMode.numbers5Plus:
+        return "6+ Digit Numbers Only";
+    }
   }
 
   @override
@@ -446,7 +464,7 @@ class _OCRHomePageState extends State<OCRHomePage> {
                     ),
                     SizedBox(height: 8),
                     Text(
-                      'Extract text or numbers from images in ZIP folders or image folders using offline OCR',
+                      'Extract text or numbers from images in ZIP folders or image folders using offline OCR.',
                       style: TextStyle(fontSize: 16),
                     ),
                   ],
@@ -454,7 +472,7 @@ class _OCRHomePageState extends State<OCRHomePage> {
               ),
             ),
             const SizedBox(height: 20),
-            _buildExtractionModeSelector(),
+            _buildExpandableExtractionModeSelector(),
             const SizedBox(height: 20),
             if (_isProcessing)
               Card(
@@ -491,6 +509,17 @@ class _OCRHomePageState extends State<OCRHomePage> {
                   padding: const EdgeInsets.all(16),
                 ),
               ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: _pickTxtFileAndExtractNumbers,
+                icon: const Icon(Icons.text_snippet),
+                label: const Text('Fix TXT File (Find 7+ digit numbers)'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.all(16),
+                ),
+              ),
             ],
             const SizedBox(height: 20),
             if (_imageFiles.isNotEmpty)
@@ -500,43 +529,6 @@ class _OCRHomePageState extends State<OCRHomePage> {
                   child: Text(
                     'Found ${_imageFiles.length} images',
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ),
-            if (_results.isNotEmpty)
-              Expanded(
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Latest Results:',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        Expanded(
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: DataTable(
-                              columns: const [
-                                DataColumn(label: Text('Image Filename')),
-                                DataColumn(label: Text('Extracted Text')),
-                              ],
-                              rows: _results.map((row) {
-                                return DataRow(
-                                  cells: [
-                                    DataCell(Text(row['filename'] ?? '')),
-                                    DataCell(Text(row['extracted'] ?? '')),
-                                  ],
-                                );
-                              }).toList(),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
                 ),
               ),
