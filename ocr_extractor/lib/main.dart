@@ -27,8 +27,27 @@ class OCRNumberExtractorApp extends StatelessWidget {
     return MaterialApp(
       title: 'OCR Extractor',
       theme: ThemeData(
-        primarySwatch: Colors.blue,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
+        cardTheme: CardTheme(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          elevation: 6,
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            elevation: 4,
+          ),
+        ),
+        appBarTheme: const AppBarTheme(
+          elevation: 0,
+          centerTitle: true,
+        ),
       ),
       home: OCRHomePage(),
     );
@@ -445,96 +464,212 @@ class _OCRHomePageState extends State<OCRHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('OCR Extractor'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        title: Row(
           children: [
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'OCR Extractor',
-                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      'Extract text or numbers from images in ZIP folders or image folders using offline OCR.',
-                      style: TextStyle(fontSize: 16),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            _buildExpandableExtractionModeSelector(),
-            const SizedBox(height: 20),
-            if (_isProcessing)
+            const Icon(Icons.text_fields_rounded, color: Colors.deepPurple, size: 32),
+            const SizedBox(width: 10),
+            const Text('OCR Extractor'),
+          ],
+        ),
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.deepPurple,
+        shadowColor: Colors.transparent,
+      ),
+      body: AnimatedContainer(
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.easeInOut,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFFe0c3fc), Color(0xFF8ec5fc)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: ListView(
+            children: [
               Card(
+                color: Colors.white.withOpacity(0.95),
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.all(20.0),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const CircularProgressIndicator(),
-                      const SizedBox(height: 16),
-                      Text(_processingStatus),
+                      Row(
+                        children: [
+                          const Icon(Icons.lightbulb_rounded, color: Colors.amber, size: 32),
+                          const SizedBox(width: 10),
+                          Text(
+                            'OCR Extractor',
+                            style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Extract text or numbers from images in ZIP folders or image folders using offline OCR.',
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      ),
                     ],
                   ),
                 ),
-              )
-            else ...[
-              ElevatedButton.icon(
-                onPressed: _pickZipFile,
-                icon: const Icon(Icons.folder_zip),
-                label: const Text('Select ZIP Folder'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.all(16),
-                ),
               ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: _pickImageFolder,
-                icon: const Icon(Icons.folder),
-                label: const Text('Select Images Folder'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.all(16),
-                ),
+              const SizedBox(height: 20),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 400),
+                child: _buildExpandableExtractionModeSelector(),
               ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: _pickTxtFileAndExtractNumbers,
-                icon: const Icon(Icons.text_snippet),
-                label: const Text('Fix TXT File (Find 7+ digit numbers)'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.all(16),
+              const SizedBox(height: 20),
+              if (_isProcessing)
+                Card(
+                  color: Colors.deepPurple.shade50,
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 8),
+                        AnimatedRotation(
+                          turns: _isProcessing ? 1 : 0,
+                          duration: const Duration(seconds: 2),
+                          child: const Icon(Icons.autorenew_rounded, size: 48, color: Colors.deepPurple),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(_processingStatus, style: Theme.of(context).textTheme.bodyLarge),
+                      ],
+                    ),
+                  ),
+                )
+              else ...[
+                AnimatedButton(
+                  onPressed: _pickZipFile,
+                  icon: Icons.folder_zip_rounded,
+                  label: 'Select ZIP Folder',
+                  color: Colors.deepPurple,
                 ),
-              ),
-            ],
-            const SizedBox(height: 20),
-            if (_imageFiles.isNotEmpty)
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Text(
-                    'Found ${_imageFiles.length} images',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                const SizedBox(height: 16),
+                AnimatedButton(
+                  onPressed: _pickImageFolder,
+                  icon: Icons.folder_open_rounded,
+                  label: 'Select Images Folder',
+                  color: Colors.orange,
+                ),
+                const SizedBox(height: 16),
+                AnimatedButton(
+                  onPressed: _pickTxtFileAndExtractNumbers,
+                  icon: Icons.text_snippet_rounded,
+                  label: 'Fix TXT File (Find 7+ digit numbers)',
+                  color: Colors.green,
+                ),
+              ],
+              const SizedBox(height: 20),
+              if (_imageFiles.isNotEmpty)
+                Card(
+                  color: Colors.green.shade50,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.image_rounded, color: Colors.green, size: 28),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Found _imageFiles.length} images',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Add this widget at the end of the file:
+class AnimatedButton extends StatefulWidget {
+  final VoidCallback onPressed;
+  final IconData icon;
+  final String label;
+  final Color color;
+  const AnimatedButton({super.key, required this.onPressed, required this.icon, required this.label, required this.color});
+
+  @override
+  State<AnimatedButton> createState() => _AnimatedButtonState();
+}
+
+class _AnimatedButtonState extends State<AnimatedButton> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 120), lowerBound: 0.0, upperBound: 0.08);
+    _scaleAnim = Tween<double>(begin: 1.0, end: 0.92).animate(_controller);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onTapDown(TapDownDetails details) {
+    _controller.forward();
+  }
+
+  void _onTapUp(TapUpDetails details) {
+    _controller.reverse();
+  }
+
+  void _onTapCancel() {
+    _controller.reverse();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: _onTapDown,
+      onTapUp: _onTapUp,
+      onTapCancel: _onTapCancel,
+      onTap: widget.onPressed,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          return Transform.scale(
+            scale: _scaleAnim.value,
+            child: child,
+          );
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            color: widget.color,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: widget.color.withOpacity(0.2),
+                blurRadius: 12,
+                offset: const Offset(0, 6),
               ),
-          ],
+            ],
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 24),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(widget.icon, color: Colors.white, size: 28),
+              const SizedBox(width: 12),
+              Text(
+                widget.label,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+            ],
+          ),
         ),
       ),
     );
