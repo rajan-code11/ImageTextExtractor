@@ -4,6 +4,8 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 import 'package:archive/archive.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:image/image.dart' as img;
+import 'image_preprocessor.dart';
 import 'dart:io';
 
 void main() {
@@ -34,8 +36,6 @@ class OCRNumberExtractorApp extends StatelessWidget {
 }
 
 class OCRHomePage extends StatefulWidget {
-  const OCRHomePage({Key? key}) : super(key: key);
-
   @override
   State<OCRHomePage> createState() => _OCRHomePageState();
 }
@@ -219,7 +219,9 @@ class _OCRHomePageState extends State<OCRHomePage> {
 
   Future<String> _extractTextFromImage(File imageFile) async {
     try {
-      final inputImage = InputImage.fromFile(imageFile);
+      // Preprocess the image before OCR
+      final preprocessedFile = await ImagePreprocessor.preprocess(imageFile);
+      final inputImage = InputImage.fromFile(preprocessedFile);
       final recognizedText = await _textRecognizer.processImage(inputImage);
       String allText = recognizedText.text;
       switch (_extractionMode) {
