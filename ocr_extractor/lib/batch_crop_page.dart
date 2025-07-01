@@ -118,10 +118,10 @@ class _BatchCropPageState extends State<BatchCropPage> {
     if (image == null) return file;
     final cropped = img.copyCrop(
       image,
-      cropRect.left.toInt(),
-      cropRect.top.toInt(),
-      cropRect.width.toInt(),
-      cropRect.height.toInt(),
+      x: cropRect.left.toInt(),
+      y: cropRect.top.toInt(),
+      width: cropRect.width.toInt(),
+      height: cropRect.height.toInt(),
     );
     final tempDir = Directory.systemTemp;
     final tempFile = File('${tempDir.path}/cropped_${DateTime.now().millisecondsSinceEpoch}_${file.uri.pathSegments.last}');

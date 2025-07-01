@@ -12,14 +12,10 @@ class ImagePreprocessor {
     image = img.grayscale(image);
     // Enhance contrast
     image = img.adjustColor(image, contrast: 1.2, brightness: 0.05);
-    // Optionally, resize if too large (uncomment if needed)
-    // if (image.width > 2000) {
-    //   image = img.copyResize(image, width: 2000);
-    // }
 
-    // Save to temp file
-    final tempPath = file.parent.path + '/preprocessed_' + file.uri.pathSegments.last;
-    final tempFile = File(tempPath);
+    // Save to system temp directory instead of next to original file
+    final tempDir = Directory.systemTemp;
+    final tempFile = File('${tempDir.path}/preprocessed_${DateTime.now().millisecondsSinceEpoch}_${file.uri.pathSegments.last}');
     await tempFile.writeAsBytes(img.encodeJpg(image, quality: 95));
     return tempFile;
   }
