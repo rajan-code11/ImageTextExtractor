@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:archive/archive.dart';
@@ -346,7 +347,7 @@ class _BatchCropPageState extends State<BatchCropPage> {
                       withCircleUi: false,
                       onStatusChanged: (status) {},
                       initialAreaBuilder: (rect) => Rect.fromLTWH(0.1, 0.1, 0.8, 0.8),
-                      onAreaChanged: (area) {},
+                      // onAreaChanged removed: not supported in this version
                       onCompleted: (area, scale) {
                         // area is relative (0-1), scale is zoom, get image size
                         final decoded = img.decodeImage(_firstImageBytes!);
@@ -369,7 +370,7 @@ class _BatchCropPageState extends State<BatchCropPage> {
                   ),
                   ElevatedButton(
                     onPressed: () {
-                      _cropController.completeCrop();
+                      _cropController.crop();
                     },
                     child: const Text('Apply Crop to All Images'),
                   ),
