@@ -342,19 +342,20 @@ class _BatchCropPageState extends State<BatchCropPage> {
                     child: Crop(
                       image: _firstImageBytes!,
                       controller: _cropController,
-                      onCropped: (croppedData) {}, // Not used, we only need the area
-                      onMoved: (area) {},
+                      onCropped: (croppedData) {
+                        // Use the full crop area for all images
+                        final decoded = img.decodeImage(_firstImageBytes!);
+                        if (decoded != null) {
+                          // Use the current controller area as the crop area
+                          final area = _cropController.area;
+                          if (area != null) {
+                            _onCropCompleted(area, 1.0, decoded.width, decoded.height);
+                          }
+                        }
+                      },
                       withCircleUi: false,
                       onStatusChanged: (status) {},
                       initialAreaBuilder: (rect) => Rect.fromLTWH(0.1, 0.1, 0.8, 0.8),
-                      // onAreaChanged removed: not supported in this version
-                      onCompleted: (area, scale) {
-                        // area is relative (0-1), scale is zoom, get image size
-                        final decoded = img.decodeImage(_firstImageBytes!);
-                        if (decoded != null) {
-                          _onCropCompleted(area, scale, decoded.width, decoded.height);
-                        }
-                      },
                       baseColor: Colors.black,
                       maskColor: Colors.black.withOpacity(0.5),
                       cornerDotBuilder: (size, index, isActive) => Container(
