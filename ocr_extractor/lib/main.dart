@@ -7,6 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:image/image.dart' as img;
 import 'image_preprocessor.dart';
 import 'dart:io';
+import 'batch_crop_page.dart';
 
 void main() {
   runApp(const OCRNumberExtractorApp());
@@ -572,6 +573,17 @@ class _OCRHomePageState extends State<OCRHomePage> {
                   icon: Icons.text_snippet_rounded,
                   label: 'Fix TXT File (Find 7+ digit numbers)',
                   color: Colors.green,
+                ),
+                const SizedBox(height: 16),
+                AnimatedButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (context) => const BatchCropPage()),
+                    );
+                  },
+                  icon: Icons.crop,
+                  label: 'Batch Crop & OCR',
+                  color: Colors.purple,
                 ),
               ],
               const SizedBox(height: 20),
