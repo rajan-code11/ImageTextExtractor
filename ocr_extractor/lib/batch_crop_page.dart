@@ -5,6 +5,7 @@ import 'package:archive/archive.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:crop_your_image/crop_your_image.dart';
 import 'image_preprocessor.dart';
 
 class BatchCropPage extends StatefulWidget {
@@ -21,6 +22,9 @@ class _BatchCropPageState extends State<BatchCropPage> {
   List<Map<String, String>> _results = [];
   Rect? _cropRect; // Crop area
   bool _usePreprocessing = true;
+  final CropController _cropController = CropController();
+  Uint8List? _firstImageBytes;
+  bool _showCropper = false;
 
   @override
   void dispose() {
@@ -39,6 +43,9 @@ class _BatchCropPageState extends State<BatchCropPage> {
       });
       try {
         await _extractImagesFromZip(result.files.single.path!);
+        if (_imageFiles.isNotEmpty) {
+          _prepareFirstImageForCropping();
+        }
       } catch (e) {
         _showErrorDialog('Error extracting ZIP: $e');
       }
@@ -57,6 +64,9 @@ class _BatchCropPageState extends State<BatchCropPage> {
       });
       try {
         await _extractImagesFromFolder(selectedDirectory);
+        if (_imageFiles.isNotEmpty) {
+          _prepareFirstImageForCropping();
+        }
       } catch (e) {
         _showErrorDialog('Error reading folder: $e');
       }
@@ -64,6 +74,13 @@ class _BatchCropPageState extends State<BatchCropPage> {
         _isProcessing = false;
       });
     }
+  }
+  void _prepareFirstImageForCropping() async {
+    final bytes = await _imageFiles.first.readAsBytes();
+    setState(() {
+      _firstImageBytes = bytes;
+      _showCropper = true;
+    });
   }
 
   Future<void> _extractImagesFromZip(String zipPath) async {
@@ -216,6 +233,12 @@ class _BatchCropPageState extends State<BatchCropPage> {
                     onPressed: () => Navigator.pop(context),
                     child: const Text('Close'),
                   ),
+                  ElevatedButton(
+                    onPressed: () async {
+                      await _saveResultsWithDialog(results);
+                    },
+                    child: const Text('Save Results'),
+                  ),
                 ],
               ),
             ],
@@ -223,6 +246,56 @@ class _BatchCropPageState extends State<BatchCropPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _saveResultsWithDialog(List<Map<String, String>> results) async {
+    String? selectedDirectory = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Select Folder to Save Results');
+    if (selectedDirectory == null) return;
+    String fileName = await _promptForFileName();
+    if (fileName.isEmpty) return;
+    final file = File('$selectedDirectory/$fileName');
+    String content = 'Image Filename\tExtracted Text\n' +
+        results.map((row) => '${row['filename']}\t${row['extracted']}').join('\n');
+    await file.writeAsString(content);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Results saved to ${file.path}')),
+      );
+    }
+  }
+
+  Future<String> _promptForFileName() async {
+    String fileName = '';
+    await showDialog(
+      context: context,
+      builder: (context) {
+        final controller = TextEditingController(text: 'cropped_ocr_results.txt');
+        return AlertDialog(
+          title: const Text('Enter Output File Name'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(hintText: 'File name'),
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                fileName = controller.text.trim();
+                Navigator.pop(context);
+              },
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+    return fileName;
   }
 
   void _showErrorDialog(String message) {
@@ -241,14 +314,16 @@ class _BatchCropPageState extends State<BatchCropPage> {
     );
   }
 
-  // For demo: fixed crop area (top-left 80% of image)
-  Future<void> _setFixedCropArea() async {
-    if (_imageFiles.isEmpty) return;
-    final bytes = await _imageFiles.first.readAsBytes();
-    img.Image? image = img.decodeImage(bytes);
-    if (image == null) return;
+  // Called when cropping is done
+  void _onCropCompleted(Rect area, double scale, int imageWidth, int imageHeight) {
     setState(() {
-      _cropRect = Rect.fromLTWH(0, 0, (image.width * 0.8), (image.height * 0.8));
+      _cropRect = Rect.fromLTWH(
+        area.left * imageWidth,
+        area.top * imageHeight,
+        area.width * imageWidth,
+        area.height * imageHeight,
+      );
+      _showCropper = false;
     });
   }
 
@@ -258,67 +333,104 @@ class _BatchCropPageState extends State<BatchCropPage> {
       appBar: AppBar(title: const Text('Batch Crop & OCR')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: ListView(
-          children: [
-            Row(
-              children: [
-                ElevatedButton.icon(
-                  onPressed: _pickZipFile,
-                  icon: const Icon(Icons.folder_zip),
-                  label: const Text('Select ZIP Folder'),
-                ),
-                const SizedBox(width: 16),
-                ElevatedButton.icon(
-                  onPressed: _pickImageFolder,
-                  icon: const Icon(Icons.folder),
-                  label: const Text('Select Images Folder'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (_imageFiles.isNotEmpty)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        child: _showCropper && _firstImageBytes != null
+            ? Column(
                 children: [
-                  Text('Loaded ${_imageFiles.length} images'),
-                  const SizedBox(height: 8),
-                  ElevatedButton(
-                    onPressed: _setFixedCropArea,
-                    child: const Text('Set Fixed Crop Area (80% Top-Left)'),
-                  ),
-                  const SizedBox(height: 8),
-                  if (_cropRect != null)
-                    Text('Crop area: ${_cropRect!.width.toInt()} x ${_cropRect!.height.toInt()}'),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Switch(
-                        value: _usePreprocessing,
-                        onChanged: (v) => setState(() => _usePreprocessing = v),
+                  const Text('Crop the first image. This crop will be applied to all images.'),
+                  Expanded(
+                    child: Crop(
+                      image: _firstImageBytes!,
+                      controller: _cropController,
+                      onCropped: (croppedData) {}, // Not used, we only need the area
+                      onMoved: (area) {},
+                      withCircleUi: false,
+                      onStatusChanged: (status) {},
+                      initialAreaBuilder: (rect) => Rect.fromLTWH(0.1, 0.1, 0.8, 0.8),
+                      onAreaChanged: (area) {},
+                      onCompleted: (area, scale) {
+                        // area is relative (0-1), scale is zoom, get image size
+                        final decoded = img.decodeImage(_firstImageBytes!);
+                        if (decoded != null) {
+                          _onCropCompleted(area, scale, decoded.width, decoded.height);
+                        }
+                      },
+                      baseColor: Colors.black,
+                      maskColor: Colors.black.withOpacity(0.5),
+                      cornerDotBuilder: (size, index, isActive) => Container(
+                        width: 16,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          color: isActive ? Colors.blue : Colors.white,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.blue, width: 2),
+                        ),
                       ),
-                      const Text('Use Image Preprocessing'),
-                    ],
+                    ),
                   ),
-                  const SizedBox(height: 8),
                   ElevatedButton(
-                    onPressed: _isProcessing ? null : _processAllImages,
-                    child: const Text('Crop & Extract Text'),
+                    onPressed: () {
+                      _cropController.completeCrop();
+                    },
+                    child: const Text('Apply Crop to All Images'),
                   ),
                 ],
+              )
+            : ListView(
+                children: [
+                  Row(
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: _pickZipFile,
+                        icon: const Icon(Icons.folder_zip),
+                        label: const Text('Select ZIP Folder'),
+                      ),
+                      const SizedBox(width: 16),
+                      ElevatedButton.icon(
+                        onPressed: _pickImageFolder,
+                        icon: const Icon(Icons.folder),
+                        label: const Text('Select Images Folder'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  if (_imageFiles.isNotEmpty)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Loaded ${_imageFiles.length} images'),
+                        const SizedBox(height: 8),
+                        if (_cropRect != null)
+                          Text('Crop area: ${_cropRect!.width.toInt()} x ${_cropRect!.height.toInt()}'),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Switch(
+                              value: _usePreprocessing,
+                              onChanged: (v) => setState(() => _usePreprocessing = v),
+                            ),
+                            const Text('Use Image Preprocessing'),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        ElevatedButton(
+                          onPressed: _isProcessing || _cropRect == null ? null : _processAllImages,
+                          child: const Text('Crop & Extract Text'),
+                        ),
+                      ],
+                    ),
+                  if (_isProcessing)
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        children: [
+                          const CircularProgressIndicator(),
+                          const SizedBox(height: 16),
+                          Text(_processingStatus),
+                        ],
+                      ),
+                    ),
+                ],
               ),
-            if (_isProcessing)
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    const CircularProgressIndicator(),
-                    const SizedBox(height: 16),
-                    Text(_processingStatus),
-                  ],
-                ),
-              ),
-          ],
-        ),
       ),
     );
   }
